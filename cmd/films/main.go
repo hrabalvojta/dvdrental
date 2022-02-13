@@ -28,7 +28,8 @@ func main() {
 	// on, but we do it here for demonstration purposes.
 	fs := flag.NewFlagSet("addsvc", flag.ExitOnError)
 	var (
-		httpAddr = fs.String("http-addr", ":8081", "HTTP listen address")
+		httpAddr  = fs.String("http-addr", ":8081", "HTTP listen address")
+		debugAddr = fs.String("debug.addr", ":8080", "Debug and metrics listen address")
 	)
 	fs.Usage = usageFor(fs, os.Args[0]+" [flags]")
 	fs.Parse(os.Args[1:])
@@ -96,6 +97,22 @@ func main() {
 	// Putting each component into its own block is mostly for aesthetics: it
 	// clearly demarcates the scope in which each listener/socket may be used.
 	var g run.Group
+	{
+		// The debug listener mounts the http.DefaultServeMux, and serves up
+		// stuff like the Prometheus metrics route, the Go debug and profiling
+		// routes, and so on.
+		debugListener, err := net.Listen("tcp", *debugAddr)
+		if err != nil {
+			logger.Log("transport", "debug/HTTP", "during", "Listen", "err", err)
+			os.Exit(1)
+		}
+		g.Add(func() error {
+			logger.Log("transport", "debug/HTTP", "addr", *debugAddr)
+			return http.Serve(debugListener, http.DefaultServeMux)
+		}, func(error) {
+			debugListener.Close()
+		})
+	}
 	{
 		// The HTTP listener mounts the Go kit HTTP handler we created.
 		httpListener, err := net.Listen("tcp", *httpAddr)
