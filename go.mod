@@ -3,8 +3,9 @@ module github.com/hrabalvojta/dvdrental
 go 1.17
 
 require (
+	github.com/caarlos0/env/v6 v6.9.1 // Config file
 	github.com/go-kit/kit v0.12.0
-	github.com/oklog/run v1.1.0
+	github.com/oklog/run v1.1.0 // main - orchestrate multiple goroutines as a unit
 	github.com/prometheus/client_golang v1.12.1
 	github.com/sony/gobreaker v0.5.0
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8

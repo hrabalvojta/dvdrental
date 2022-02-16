@@ -1,14 +1,15 @@
 package main
 
 import (
-	"flag"
+	//"flag"
+	//"text/tabwriter"
+
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"text/tabwriter"
 
 	"github.com/oklog/run"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/prometheus"
+	"github.com/hrabalvojta/dvdrental/pkg/films/config"
 	"github.com/hrabalvojta/dvdrental/pkg/films/endpoints"
 	"github.com/hrabalvojta/dvdrental/pkg/films/service"
 	"github.com/hrabalvojta/dvdrental/pkg/films/transport"
@@ -25,14 +27,14 @@ import (
 func main() {
 	// Define our flags. Your service probably won't need to bind listeners for
 	// *all* supported transports, or support both Zipkin and LightStep, and so
-	// on, but we do it here for demonstration purposes.
-	fs := flag.NewFlagSet("addsvc", flag.ExitOnError)
-	var (
-		httpAddr  = fs.String("http-addr", ":8081", "HTTP listen address")
-		debugAddr = fs.String("debug.addr", ":8080", "Debug and metrics listen address")
-	)
-	fs.Usage = usageFor(fs, os.Args[0]+" [flags]")
-	fs.Parse(os.Args[1:])
+	// on, but we do it here for demonstration purposes.}
+	//fs := flag.NewFlagSet("films", flag.ExitOnError)
+	//var (
+	//	httpAddr  = fs.String("http-addr", ":8081", "HTTP listen address")
+	//	debugAddr = fs.String("debug.addr", ":8080", "Debug and metrics listen address")
+	//)
+	//fs.Usage = usageFor(fs, os.Args[0]+" [flags]")
+	//fs.Parse(os.Args[1:])
 
 	// Create a single logger, which we'll use and give to other components.
 	var logger log.Logger
@@ -40,6 +42,17 @@ func main() {
 		logger = log.NewLogfmtLogger(os.Stderr)
 		logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 		logger = log.With(logger, "caller", log.DefaultCaller)
+	}
+
+	var cfg config.Config
+	{
+		var err error
+		cfg, err = config.InitConfig()
+		if err != nil {
+			logger.Log("env_config", "debug/env", "during", "Parse", "err", err)
+			os.Exit(1)
+		}
+		logger.Log("env_config", "debug/env", "config", "env", "loaded", "success")
 	}
 
 	// Create the (sparse) metrics we'll use in the service. They, too, are
@@ -101,13 +114,13 @@ func main() {
 		// The debug listener mounts the http.DefaultServeMux, and serves up
 		// stuff like the Prometheus metrics route, the Go debug and profiling
 		// routes, and so on.
-		debugListener, err := net.Listen("tcp", *debugAddr)
+		debugListener, err := net.Listen("tcp", cfg.Debug_addr)
 		if err != nil {
 			logger.Log("transport", "debug/HTTP", "during", "Listen", "err", err)
 			os.Exit(1)
 		}
 		g.Add(func() error {
-			logger.Log("transport", "debug/HTTP", "addr", *debugAddr)
+			logger.Log("transport", "debug/HTTP", "addr", cfg.Debug_addr)
 			return http.Serve(debugListener, http.DefaultServeMux)
 		}, func(error) {
 			debugListener.Close()
@@ -115,13 +128,13 @@ func main() {
 	}
 	{
 		// The HTTP listener mounts the Go kit HTTP handler we created.
-		httpListener, err := net.Listen("tcp", *httpAddr)
+		httpListener, err := net.Listen("tcp", cfg.Http_addr)
 		if err != nil {
 			logger.Log("transport", "HTTP", "during", "Listen", "err", err)
 			os.Exit(1)
 		}
 		g.Add(func() error {
-			logger.Log("transport", "HTTP", "addr", *httpAddr)
+			logger.Log("transport", "HTTP", "addr", cfg.Http_addr)
 			return http.Serve(httpListener, httpHandler)
 		}, func(error) {
 			httpListener.Close()
@@ -146,17 +159,17 @@ func main() {
 	logger.Log("exit", g.Run())
 }
 
-func usageFor(fs *flag.FlagSet, short string) func() {
-	return func() {
-		fmt.Fprintf(os.Stderr, "USAGE\n")
-		fmt.Fprintf(os.Stderr, "  %s\n", short)
-		fmt.Fprintf(os.Stderr, "\n")
-		fmt.Fprintf(os.Stderr, "FLAGS\n")
-		w := tabwriter.NewWriter(os.Stderr, 0, 8, 2, ' ', 0)
-		fs.VisitAll(func(f *flag.Flag) {
-			fmt.Fprintf(w, "\t-%s\t%s\t%s\n", f.Name, f.DefValue, f.Usage)
-		})
-		w.Flush()
-		fmt.Fprintf(os.Stderr, "\n")
-	}
-}
+//func usageFor(fs *flag.FlagSet, short string) func() {
+//	return func() {
+//		fmt.Fprintf(os.Stderr, "USAGE\n")
+//		fmt.Fprintf(os.Stderr, "  %s\n", short)
+//		fmt.Fprintf(os.Stderr, "\n")
+//		fmt.Fprintf(os.Stderr, "FLAGS\n")
+//		w := tabwriter.NewWriter(os.Stderr, 0, 8, 2, ' ', 0)
+//		fs.VisitAll(func(f *flag.Flag) {
+//			fmt.Fprintf(w, "\t-%s\t%s\t%s\n", f.Name, f.DefValue, f.Usage)
+//		})
+//		w.Flush()
+//		fmt.Fprintf(os.Stderr, "\n")
+//	}
+//}
