@@ -9,7 +9,7 @@ type Config struct {
 	Token             string `env:"token"`
 	Debug_addr        string `env:"debug_addr,required,notEmpty" envDefault:":8080"`
 	Http_addr         string `env:"http_addr,required,notEmpty" envDefault:":8081"`
-	Channel           string `env:"gokit-users"`
+	Channel           string `env:"gokit-films"`
 	Postgres_database string `env:"postgres_database,required,notEmpty" envDefault:"dvdrental"`
 	Postgres_dbuser   string `env:"postgres_dbuser,required,notEmpty" envDefault:"postgres"`
 	Postgres_host     string `env:"postgres_host,required,notEmpty" envDefault:"localhost"`

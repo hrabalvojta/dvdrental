@@ -18,7 +18,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/prometheus"
-	"github.com/hrabalvojta/dvdrental/pkg/films/config"
+	"github.com/hrabalvojta/dvdrental/internal/config"
 	"github.com/hrabalvojta/dvdrental/pkg/films/endpoints"
 	"github.com/hrabalvojta/dvdrental/pkg/films/service"
 	"github.com/hrabalvojta/dvdrental/pkg/films/transport"
