@@ -1,0 +1,22 @@
+# ApplicationEnvironment provides production, development, or staging environment specification
+app_env: "development"
+
+# ApplicationToken is the JWT signing token used to compare incoming authentication requests with the auth middleware
+token: ""
+
+# HTTPHost defines the hostname that the HTTP/DEBUG server will listen on e.g. localhost:8080 or (:8080) for development
+debug_addr: ":8080"
+http_addr: ":8081"
+
+# LogChannel defines the channel this application's logs will be tagged with. Within our "golang" app channel
+# we have defined channels by service. This value may be "gokit-base" for this project.
+channel: "micro_films"
+
+# PostgresSQL connection configuration
+postgres_host: "localhost"
+postgres_port: "5432"
+postgres_database: "dvdrental"
+postgres_dbuser: "postgres"
+postgres_password: "secret"
+postgres_sSLMode: "disable"
+postgres_timeZone: "Europe/Prague"

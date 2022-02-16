@@ -1,0 +1,14 @@
+{
+    "app_env": "development",
+    "token": "",
+    "debug_addr": ":8080",
+    "http_addr": ":8081",
+    "channel": "gokit-users",
+    "postgres_host": "localhost",
+    "postgres_port": "5432",
+    "postgres_database": "dvdrental",
+    "postgres_dbuser": "postgres",
+    "postgres_password": "secret",
+    "postgres_sSLMode": "disable",
+    "postgres_timeZone": "Europe/Prague"
+}
