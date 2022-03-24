@@ -52,6 +52,7 @@ func main() {
 			logger.Log("env_config", "debug/env", "during", "Parse", "err", err)
 			os.Exit(1)
 		}
+		logger = log.With(logger, "channel", cfg.Channel)
 		logger.Log("env_config", "debug/env", "config", "env", "loaded", "success")
 	}
 
