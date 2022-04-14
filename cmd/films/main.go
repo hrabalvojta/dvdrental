@@ -1,9 +1,7 @@
 package main
 
 import (
-	//"flag"
-	//"text/tabwriter"
-
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -14,17 +12,21 @@ import (
 	"github.com/oklog/run"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/uptrace/bun"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/metrics"
 	"github.com/go-kit/kit/metrics/prometheus"
 	"github.com/hrabalvojta/dvdrental/internal/config"
 	"github.com/hrabalvojta/dvdrental/pkg/films/endpoints"
+	"github.com/hrabalvojta/dvdrental/pkg/films/psql"
+	"github.com/hrabalvojta/dvdrental/pkg/films/psql/migrations"
 	"github.com/hrabalvojta/dvdrental/pkg/films/service"
 	"github.com/hrabalvojta/dvdrental/pkg/films/transport"
 )
 
 func main() {
+
 	// Define our flags. Your service probably won't need to bind listeners for
 	// *all* supported transports, or support both Zipkin and LightStep, and so
 	// on, but we do it here for demonstration purposes.}
@@ -56,20 +58,35 @@ func main() {
 		logger.Log("env_config", "debug/env", "config", "env", "loaded", "success")
 	}
 
+	var db *bun.DB
+	{
+		ctx := context.Background()
+		db = psql.NewDB(cfg)
+
+		//for true {
+		err := psql.StartMigration(db, migrations.Migrations, ctx, logger)
+		//if err == nil {
+		//	break
+		//}
+		logger.Log("db", "postgres", "state", "migration", "err", err)
+		//time.Sleep(time.Duration(cfg.Postgres_timeout) * time.Second)
+		//}
+	}
+
 	// Create the (sparse) metrics we'll use in the service. They, too, are
 	// dependencies that we pass to components that use them.
 	var ints, chars metrics.Counter
 	{
 		// Business-level metrics.
 		ints = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-			Namespace: "example",
-			Subsystem: "addsvc",
+			Namespace: "dvdrental",
+			Subsystem: "films",
 			Name:      "integers_summed",
 			Help:      "Total count of integers summed via the Sum method.",
 		}, []string{})
 		chars = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-			Namespace: "example",
-			Subsystem: "addsvc",
+			Namespace: "dvdrental",
+			Subsystem: "films",
 			Name:      "characters_concatenated",
 			Help:      "Total count of characters concatenated via the Concat method.",
 		}, []string{})
@@ -78,8 +95,8 @@ func main() {
 	{
 		// Endpoint-level metrics.
 		duration = prometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
-			Namespace: "example",
-			Subsystem: "addsvc",
+			Namespace: "dvdrental",
+			Subsystem: "films",
 			Name:      "request_duration_seconds",
 			Help:      "Request duration in seconds.",
 		}, []string{"method", "success"})
