@@ -13,11 +13,16 @@ import (
 	"github.com/uptrace/bun/migrate"
 )
 
-func NewDB(cfg config.Config) *bun.DB {
+func NewDB(cfg *config.Config) (*bun.DB, error) {
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.Postgres_dsn)))
 	db := bun.NewDB(sqldb, pgdialect.New())
 
-	return db
+	err := sqldb.Ping()
+	if err != nil {
+		return db, err
+	}
+
+	return db, nil
 }
 
 func StartMigration(db *bun.DB, mig *migrate.Migrations, ctx context.Context, logger log.Logger) error {

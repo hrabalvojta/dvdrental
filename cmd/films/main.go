@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
+	"time"
 
 	"github.com/oklog/run"
 	stdprometheus "github.com/prometheus/client_golang/prometheus"
@@ -25,7 +27,55 @@ import (
 	"github.com/hrabalvojta/dvdrental/pkg/films/transport"
 )
 
+type appCtxKey struct{}
+
+func ContextWithApp(ctx context.Context, app *App) context.Context {
+	ctx = context.WithValue(ctx, appCtxKey{}, app)
+	return ctx
+}
+
+type App struct {
+	// Application core
+	cfg    *config.Config
+	ctx    context.Context
+	logger log.Logger
+	group  run.Group
+
+	// Graceful stop
+	stopping uint32
+	stopCh   chan struct{}
+
+	// Prometheus
+	ints, chars metrics.Counter
+	duration    metrics.Histogram
+
+	// Lazy DB init
+	dbOnce sync.Once
+	db     *bun.DB
+}
+
+func NewApp() *App {
+	app := &App{
+		stopCh: make(chan struct{}),
+	}
+
+	app.ctx = ContextWithApp(context.Background(), app)
+
+	return app
+}
+
+func (app *App) Context() context.Context {
+	return app.ctx
+}
+
+func (app *App) Config() *config.Config {
+	return app.cfg
+}
+
 func main() {
+
+	// Create Application struct which contains all important variables
+	app := NewApp()
 
 	// Define our flags. Your service probably won't need to bind listeners for
 	// *all* supported transports, or support both Zipkin and LightStep, and so
@@ -39,62 +89,61 @@ func main() {
 	//fs.Parse(os.Args[1:])
 
 	// Create a single logger, which we'll use and give to other components.
-	var logger log.Logger
+	//var logger log.Logger
 	{
-		logger = log.NewLogfmtLogger(os.Stderr)
-		logger = log.With(logger, "ts", log.DefaultTimestampUTC)
-		logger = log.With(logger, "caller", log.DefaultCaller)
+		app.logger = log.NewLogfmtLogger(os.Stderr)
+		app.logger = log.With(app.logger, "ts", log.DefaultTimestampUTC)
+		app.logger = log.With(app.logger, "caller", log.DefaultCaller)
 	}
 
-	var cfg config.Config
 	{
 		var err error
-		cfg, err = config.InitConfig()
+		app.cfg, err = config.InitConfig()
 		if err != nil {
-			logger.Log("env_config", "debug/env", "during", "Parse", "err", err)
+			app.logger.Log("env_config", "debug/env", "during", "Parse", "err", err)
 			os.Exit(1)
 		}
-		logger = log.With(logger, "channel", cfg.Channel)
-		logger.Log("env_config", "debug/env", "config", "env", "loaded", "success")
+		app.logger = log.With(app.logger, "channel", app.cfg.Channel)
+		app.logger.Log("env_config", "debug/env", "config", "env", "loaded", "success")
 	}
 
-	var db *bun.DB
 	{
-		ctx := context.Background()
-		db = psql.NewDB(cfg)
-
-		//for true {
-		err := psql.StartMigration(db, migrations.Migrations, ctx, logger)
-		//if err == nil {
-		//	break
-		//}
-		logger.Log("db", "postgres", "state", "migration", "err", err)
-		//time.Sleep(time.Duration(cfg.Postgres_timeout) * time.Second)
-		//}
+		var err error
+		for true {
+			app.db, err = psql.NewDB(app.cfg)
+			if err == nil {
+				break
+			}
+			app.logger.Log("db", "postgres", "state", "migration", "err", err)
+			time.Sleep(time.Duration(app.cfg.Postgres_timeout) * time.Second)
+		}
+		err = psql.StartMigration(app.db, migrations.Migrations, app.ctx, app.logger)
+		if err != nil {
+			app.logger.Log("db", "postgres", "state", "migration", "err", err)
+			os.Exit(1)
+		}
 	}
 
 	// Create the (sparse) metrics we'll use in the service. They, too, are
 	// dependencies that we pass to components that use them.
-	var ints, chars metrics.Counter
 	{
 		// Business-level metrics.
-		ints = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		app.ints = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: "dvdrental",
 			Subsystem: "films",
 			Name:      "integers_summed",
 			Help:      "Total count of integers summed via the Sum method.",
 		}, []string{})
-		chars = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		app.chars = prometheus.NewCounterFrom(stdprometheus.CounterOpts{
 			Namespace: "dvdrental",
 			Subsystem: "films",
 			Name:      "characters_concatenated",
 			Help:      "Total count of characters concatenated via the Concat method.",
 		}, []string{})
 	}
-	var duration metrics.Histogram
 	{
 		// Endpoint-level metrics.
-		duration = prometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
+		app.duration = prometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
 			Namespace: "dvdrental",
 			Subsystem: "films",
 			Name:      "request_duration_seconds",
@@ -110,9 +159,9 @@ func main() {
 	// the interfaces that the transports expect. Note that we're not binding
 	// them to ports or anything yet; we'll do that next.
 	var (
-		service     = service.New(logger, ints, chars)
-		endpoints   = endpoints.New(service, logger, duration)
-		httpHandler = transport.NewHTTPHandler(endpoints, logger)
+		service     = service.New(app.logger, app.ints, app.chars)
+		endpoints   = endpoints.New(service, app.logger, app.duration)
+		httpHandler = transport.NewHTTPHandler(endpoints, app.logger)
 	)
 
 	// Now we're to the part of the func main where we want to start actually
@@ -127,18 +176,18 @@ func main() {
 	//
 	// Putting each component into its own block is mostly for aesthetics: it
 	// clearly demarcates the scope in which each listener/socket may be used.
-	var g run.Group
+	//var g run.Group
 	{
 		// The debug listener mounts the http.DefaultServeMux, and serves up
 		// stuff like the Prometheus metrics route, the Go debug and profiling
 		// routes, and so on.
-		debugListener, err := net.Listen("tcp", cfg.Debug_addr)
+		debugListener, err := net.Listen("tcp", app.cfg.Debug_addr)
 		if err != nil {
-			logger.Log("transport", "debug/HTTP", "during", "Listen", "err", err)
+			app.logger.Log("transport", "debug/HTTP", "during", "Listen", "err", err)
 			os.Exit(1)
 		}
-		g.Add(func() error {
-			logger.Log("transport", "debug/HTTP", "addr", cfg.Debug_addr)
+		app.group.Add(func() error {
+			app.logger.Log("transport", "debug/HTTP", "addr", app.cfg.Debug_addr)
 			return http.Serve(debugListener, http.DefaultServeMux)
 		}, func(error) {
 			debugListener.Close()
@@ -146,13 +195,13 @@ func main() {
 	}
 	{
 		// The HTTP listener mounts the Go kit HTTP handler we created.
-		httpListener, err := net.Listen("tcp", cfg.Http_addr)
+		httpListener, err := net.Listen("tcp", app.cfg.Http_addr)
 		if err != nil {
-			logger.Log("transport", "HTTP", "during", "Listen", "err", err)
+			app.logger.Log("transport", "HTTP", "during", "Listen", "err", err)
 			os.Exit(1)
 		}
-		g.Add(func() error {
-			logger.Log("transport", "HTTP", "addr", cfg.Http_addr)
+		app.group.Add(func() error {
+			app.logger.Log("transport", "HTTP", "addr", app.cfg.Http_addr)
 			return http.Serve(httpListener, httpHandler)
 		}, func(error) {
 			httpListener.Close()
@@ -161,7 +210,7 @@ func main() {
 	{
 		// This function just sits and waits for ctrl-C.
 		cancelInterrupt := make(chan struct{})
-		g.Add(func() error {
+		app.group.Add(func() error {
 			c := make(chan os.Signal, 1)
 			signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
 			select {
@@ -174,7 +223,7 @@ func main() {
 			close(cancelInterrupt)
 		})
 	}
-	logger.Log("exit", g.Run())
+	app.logger.Log("exit", app.group.Run())
 }
 
 //func usageFor(fs *flag.FlagSet, short string) func() {

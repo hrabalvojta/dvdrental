@@ -17,10 +17,10 @@ type Config struct {
 	Postgres_timeout int    `env:"postgres_timeout" envDefault:"1"`
 }
 
-func InitConfig() (Config, error) {
-	cfg := Config{}
-	if err := env.Parse(&cfg); err != nil {
-		return Config{}, err
+func InitConfig() (*Config, error) {
+	cfg := &Config{}
+	if err := env.Parse(cfg); err != nil {
+		return &Config{}, err
 	}
 	return cfg, nil
 }
