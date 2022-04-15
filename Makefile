@@ -3,6 +3,14 @@ prep:
 	sleep 1; \
 	docker run --rm --name postgres -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=dvdrental -p5432:5432 -d postgres:alpine
 
+sleep:
+	sleep 3
+
+psql:
+	PGPASSWORD=secret psql -hlocalhost -p5432 -Upostgres -d dvdrental
+
+psql_reset: prep sleep psql
+
 update:
 	go get -u all; \
 	go mod tidy -compat=1.17
